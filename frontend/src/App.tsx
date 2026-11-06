@@ -37,6 +37,8 @@ const INITIAL: Filters = {
   minPrice: '', maxPrice: '', minBedrooms: '', city: '', keyword: '', targetBudget: '', pageSize: '10',
 }
 
+const errorStyle = { color: 'crimson' }
+
 type State =
   | { kind: 'idle' }
   | { kind: 'loading' }
@@ -92,7 +94,7 @@ export default function App() {
             {errors
               .filter((e) => e.field === f.name)
               .map((e) => (
-                <span key={e.message} role="alert"> {e.message}</span>
+                <span key={e.message} role="alert" style={errorStyle}> {e.message}</span>
               ))}
           </div>
         ))}
@@ -100,7 +102,7 @@ export default function App() {
       </form>
 
       {generalErrors.map((e) => (
-        <p key={e.message} role="alert">{e.message}</p>
+        <p key={e.message} role="alert" style={errorStyle}>{e.message}</p>
       ))}
       {state.kind === 'loading' && <p>Loading...</p>}
       {state.kind === 'done' && <Results data={state.data} onPage={(p) => search(p, submitted)} />}
