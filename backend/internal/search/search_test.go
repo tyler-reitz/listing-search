@@ -45,3 +45,30 @@ func TestLoadRejectsBadDate(t *testing.T) {
 		t.Fatal("want error for non-ISO date")
 	}
 }
+
+func TestScore(t *testing.T) {
+	tests := []struct {
+		name   string
+		price  float64
+		listed string
+		budget *float64
+		want   float64
+	}{
+		// 0.7*1.0 + 0.3*(1 - 9/90) = 0.97
+		{"exact budget, 9 days old", 500000, "2026-09-01", ptr(500000.0), 97.0},
+		// 0.7*0.9 + 0.3*(1 - 30/90) = 0.83
+		{"10% under budget, 30 days old", 450000, "2026-08-11", ptr(500000.0), 83.0},
+		{"10% over budget scores the same as under", 550000, "2026-08-11", ptr(500000.0), 83.0},
+		{"far over budget and stale clamps to 0", 1100000, "2026-05-01", ptr(500000.0), 0},
+		{"no budget uses recency only", 500000, "2026-09-01", nil, 90.0},
+		{"future listing date counts as brand new", 500000, "2026-09-20", nil, 100.0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := Listing{Price: tt.price, ListedDate: date(tt.listed)}
+			if got := Score(l, tt.budget, now); got != tt.want {
+				t.Errorf("Score = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
