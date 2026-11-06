@@ -127,3 +127,10 @@ func TestHappyPath(t *testing.T) {
 		t.Errorf("unexpected ranking: %+v", res.Results)
 	}
 }
+
+func TestErrorMessagesAreNotHTMLEscaped(t *testing.T) {
+	rec := get(t, "minPrice=500000&maxPrice=300000")
+	if !strings.Contains(rec.Body.String(), "must be >= minPrice") {
+		t.Errorf("want literal >= in body; got %s", rec.Body)
+	}
+}
