@@ -1,22 +1,24 @@
 # Listing Search
 
-Search, rank and paginate property listings. Go API (stdlib only) plus a React/TypeScript UI.
+Search, rank and paginate property listings. Node API (Express 5, Zod, TypeScript) plus a React/TypeScript UI.
+
+This is the Node port of the Go version on `main`. Same API contract, scoring and tests; the frontend is unchanged. (The exercise allows Python, Go or Java backends; this branch is a comparison, not the submission.)
 
 ## Run
 
-Requires Go 1.22+ and Node 20.19+ (or 22.12+).
+Requires Node 22.18+, which runs TypeScript directly (no build step).
 
 ```bash
 # API on :8080
-cd backend && go run . -now 2026-09-05
+cd backend && npm install && npm start -- --now 2026-09-05
 
 # UI on :5173, proxies /api to :8080
 cd frontend && npm install && npm run dev
 ```
 
-`-now` pins the clock. The sample listings are from Aug and Sep 2026, so against today's date most are past the 90-day recency window and recency contributes almost nothing. Omit it to use the real time.
+`--now` pins the clock. The sample listings are from Aug and Sep 2026, so against today's date most are past the 90-day recency window and recency contributes almost nothing. Omit it to use the real time.
 
-Tests: `cd backend && go test ./...`
+Tests: `cd backend && npm test` (type-check: `npm run typecheck`)
 
 ## API
 
@@ -46,7 +48,7 @@ Without a targetBudget, score is `100 * recency`.
 
 Example: target $500,000, a $450,000 listing that is 30 days old. budgetFit is 0.9, recency is 0.667, so the score is 100 * (0.63 + 0.2) = 83.0.
 
-Why this shape: price is the buyer's hard constraint, so budget fit carries most of the weight, and recency nudges fresh listings up. Both terms are linear and clamped to 0..1, so any score can be checked by hand. The weights and window are named constants in `internal/search/score.go`.
+Why this shape: price is the buyer's hard constraint, so budget fit carries most of the weight, and recency nudges fresh listings up. Both terms are linear and clamped to 0..1, so any score can be checked by hand. The weights and window are named constants in `src/search.ts`.
 
 Ties sort by price ascending, then id, so results are deterministic. Ties compare the rounded score, so listings that display the same score sort as tied.
 
@@ -60,12 +62,13 @@ Bad input returns 422 with every problem at once:
 
 A valid query that matches nothing returns 200 with an empty list. The distinction is deliberate: an unknown city or a page past the end is a client mistake worth reporting, while "no listings match" is a legitimate answer.
 
-`NaN` and `Inf` are rejected as numbers. Go's `ParseFloat` accepts them, and a NaN bound would silently disable its filter.
+`NaN` and `Infinity` are rejected: `z.coerce.number()` turns them into numbers, and Zod 4's `number` refuses non-finite values.
 
 ## Design
 
-- `internal/search` is pure: filter, score, sort, paginate, with the clock passed in. All ranking logic and its tests live there.
-- `internal/api` turns query strings into validated `search.Params` and maps results and errors to JSON.
+- `src/search.ts` is pure: filter, score, sort, paginate, with the clock passed in. All ranking logic and its tests live there. Listings are validated with a Zod schema at load time.
+- `src/app.ts` declares the query as a Zod schema built inside `createApp`, so it can close over the loaded cities. Field problems, including an unknown city, are reported together; the min/max check runs once every field has parsed.
+- Type and range messages are Zod's wording; the `field` names match the Go version.
 - The UI does no validation of its own beyond input types. The server owns the rules, so they live in one place. Paging reuses the last submitted filters, not unsubmitted edits in the form.
 
 ## Tradeoffs and known gaps
@@ -74,7 +77,7 @@ A valid query that matches nothing returns 200 with an empty list. The distincti
 - **No status filter.** All listings are searched, including `pending` (A7).
 - **Symmetric budget penalty.** $50k over budget scores the same as $50k under. Real buyers likely tolerate under more than over; this would be a one-line change.
 - **City validation is tied to the loaded data.** Fine for a fixed file. With a database this becomes a lookup or goes away.
-- **Unknown and repeated query params are not rejected.** A typo like `minprice` is ignored, and only the first of repeated values is used.
-- **Age is whole days in server time against UTC dates,** so near midnight a listing's age can be off by one day (about 0.3 points of score).
+- **Unknown query params are ignored.** A typo like `minprice` applies no filter. (`z.strictObject` would reject them.) Repeated params are rejected with a 422.
+- **Age uses the server's local calendar date,** so a listing's age ticks over at local midnight, not UTC.
 - **Rapid paging can race.** Two quick clicks send two requests and the last response wins. An `AbortController` per request would fix it.
 - **In-memory, linear scan.** Fine for 12 listings. At scale, filtering moves to an indexed store.
